@@ -74,12 +74,13 @@
   - inspect row HTML and count expected rendered nodes (for example `strong.message-bold-text`)
   - save screenshot to `output/playwright/<task-name>.png`
 - Playwright test sequence (when Playwright is requested):
-  1. Start or confirm a single dev server instance (`pnpm run dev -- --host 0.0.0.0 --port 4173`).
-  2. If there are stale servers on the same port, stop them first to avoid false test results.
-  3. Run Playwright CLI against `http://127.0.0.1:4173` (or required test URL) and exercise the changed flow.
-  4. For responsive/mobile changes, run checks at 375x812 and 768x1024.
-  5. Wait 2-3 seconds before capturing final screenshot(s).
-  6. Save screenshots under `output/playwright/` with task-specific names.
+  1. Check whether a dev server is already running on port 4173.
+  2. If no server is running, start one (`pnpm run dev -- --host 0.0.0.0 --port 4173`).
+  3. If there are stale servers on the same port, stop them first to avoid false test results.
+  4. Run Playwright CLI against `http://127.0.0.1:4173` (or required test URL) and exercise the changed flow.
+  5. For responsive/mobile changes, run checks at 375x812 and 768x1024.
+  6. Wait 2-3 seconds before capturing final screenshot(s).
+  7. Save screenshots under `output/playwright/` with task-specific names.
 - Capture screenshots only when Playwright verification is requested.
 - If the dev server fails to start due to pre-existing errors, fix them first or work around them before testing.
 - If requested Playwright assertions fail, do not report completion; fix and re-run until passing.
@@ -108,9 +109,9 @@
 ## A1 Playwright Verification (From Mac via Tailscale)
 
 - Use this flow when validating UI behavior on Oracle A1 from the local Mac machine.
-- On A1, start the app server with Codex CLI available in `PATH`:
+- On A1, confirm whether the app server is already running on port 4173 before starting a new one:
   - `export PATH="$HOME/.npm-global/bin:$PATH"`
-  - `pnpm run dev -- --host 0.0.0.0 --port 4173`
+  - if not running, start it with `pnpm run dev -- --host 0.0.0.0 --port 4173`
 - From Mac, run Playwright against Tailscale URL (`http://100.127.77.25:4173`), not localhost.
 - Verify success with both checks:
   - UI assertion in Playwright (new project/folder appears in sidebar or selector).
