@@ -701,6 +701,26 @@ This file tracks manual regression and feature verification steps.
 - Remove any temporary attachments from the composer before continuing other tests.
 - Stop the app server when finished.
 
+### Feature: Rollback copies user turn text into composer draft
+
+#### Prerequisites
+- App server is running from this repository.
+- Open an existing thread that has at least two completed user/assistant turns.
+
+#### Steps
+1. In the selected thread, type a temporary draft into the composer without sending it.
+2. In the conversation, click `Rollback` on an assistant message from an earlier completed turn.
+3. Wait for rollback to complete and the thread to truncate.
+4. Inspect the composer textarea.
+
+#### Expected Results
+- Rollback succeeds and truncates the thread from the selected turn onward.
+- The composer draft is replaced with the user message text from the rolled-back turn.
+- If rollback fails, the composer draft is not overwritten by rollback hydration.
+
+#### Rollback/Cleanup
+- Clear the composer draft or restore the previous text manually if needed.
+
 ### Feature: Home no-thread composer alignment
 
 #### Prerequisites
@@ -718,6 +738,27 @@ This file tracks manual regression and feature verification steps.
 - The composer input no longer appears horizontally offset compared with the content above.
 - The composer and input are fully visible on-screen (no horizontal clipping at either edge).
 - Alignment remains stable across desktop width changes and after returning from a thread.
+
+#### Rollback/Cleanup
+- None.
+
+### Feature: Chat Markdown links with parentheses parse correctly
+
+#### Prerequisites
+- App server is running from this repository.
+- Open any thread where assistant messages are visible.
+
+#### Steps
+1. Send a message that includes Markdown file links whose targets contain parentheses, for example: `[/root/New Project (1)/codexui/src/App.vue:426](/root/New Project (1)/codexui/src/App.vue:426)`.
+2. Send a message that includes a Markdown web link with parentheses in the URL path, for example: `[docs](https://example.com/path_(v1)/intro)`.
+3. Send a message that includes a Markdown image link whose target contains parentheses, for example: `![sample](/root/New Project (1)/codexui/output/playwright/sample_(1).png)`.
+4. Verify rendering in the chat transcript for all three messages.
+
+#### Expected Results
+- Markdown links render as clickable anchors instead of raw bracket text when the target contains parentheses.
+- File links open through the app file-browse URL behavior.
+- HTTP/HTTPS links open as external links.
+- Markdown images with parentheses in their target render as images.
 
 #### Rollback/Cleanup
 - None.

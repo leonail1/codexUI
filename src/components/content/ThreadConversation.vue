@@ -1465,16 +1465,78 @@ function trimLinkWrappers(value: string): { core: string; leading: string; trail
   return { core, leading, trailing }
 }
 
-function parseMarkdownLinkToken(value: string): { label: string; target: string } | null {
-  const trimmed = value.trim()
-  const match = trimmed.match(/^\[([^\]\n]+)\]\(([^)\n]+)\)$/u)
-  if (!match) return null
-  const labelRaw = (match[1] ?? '').trim()
-  const targetRaw = (match[2] ?? '').trim()
+type MarkdownInlineToken = {
+  label: string
+  target: string
+  start: number
+  end: number
+  isImage: boolean
+}
+
+function readMarkdownInlineTokenAt(text: string, startIndex: number): MarkdownInlineToken | null {
+  if (startIndex < 0 || startIndex >= text.length) return null
+
+  let cursor = startIndex
+  let isImage = false
+  if (text[cursor] === '!' && text[cursor + 1] === '[') {
+    isImage = true
+    cursor += 1
+  }
+  if (text[cursor] !== '[') return null
+
+  const labelStart = cursor + 1
+  const labelEnd = text.indexOf(']', labelStart)
+  if (labelEnd < 0) return null
+  if (text.slice(labelStart, labelEnd).includes('\n')) return null
+
+  const targetOpenIndex = labelEnd + 1
+  if (text[targetOpenIndex] !== '(') return null
+
+  let targetCursor = targetOpenIndex + 1
+  let depth = 0
+  while (targetCursor < text.length) {
+    const char = text[targetCursor]
+    if (char === '\n') return null
+    if (char === '\\') {
+      targetCursor += 2
+      continue
+    }
+    if (char === '(') {
+      depth += 1
+      targetCursor += 1
+      continue
+    }
+    if (char === ')') {
+      if (depth === 0) break
+      depth -= 1
+      targetCursor += 1
+      continue
+    }
+    targetCursor += 1
+  }
+
+  if (targetCursor >= text.length || text[targetCursor] !== ')') return null
+
+  const labelRaw = text.slice(labelStart, labelEnd).trim()
+  const targetRaw = text.slice(targetOpenIndex + 1, targetCursor).trim()
   const label = trimLinkWrappers(labelRaw).core.trim() || labelRaw
   const target = trimLinkWrappers(targetRaw).core.trim()
   if (!target) return null
-  return { label, target }
+
+  return {
+    label,
+    target,
+    start: startIndex,
+    end: targetCursor + 1,
+    isImage,
+  }
+}
+
+function parseMarkdownLinkToken(value: string): { label: string; target: string } | null {
+  const trimmed = value.trim()
+  const parsed = readMarkdownInlineTokenAt(trimmed, 0)
+  if (!parsed || parsed.end !== trimmed.length || parsed.isImage) return null
+  return { label: parsed.label, target: parsed.target }
 }
 
 function headingTag(level: number): string {
@@ -2275,24 +2337,30 @@ function applyInlineMarkdownMarkers(segments: InlineSegment[]): InlineSegment[] 
 }
 
 function splitTextByFileUrls(text: string): InlineSegment[] {
-  const markdownLinkPattern = /\[([^\]\n]+)\]\(([^)\n]+)\)/gu
   const segments: InlineSegment[] = []
   let cursor = 0
+  let searchFrom = 0
 
-  for (const match of text.matchAll(markdownLinkPattern)) {
-    if (typeof match.index !== 'number') continue
-    const [fullMatch, labelRaw, targetRaw] = match
-    const start = match.index
-    const end = start + fullMatch.length
-
-    if (start > cursor) {
-      segments.push(...splitPlainTextByLinks(text.slice(cursor, start)))
+  while (searchFrom < text.length) {
+    const start = text.indexOf('[', searchFrom)
+    if (start < 0) break
+    if (start > 0 && text[start - 1] === '!') {
+      searchFrom = start + 1
+      continue
     }
 
-    const markdownToken = parseMarkdownLinkToken(`[${labelRaw ?? ''}](${targetRaw ?? ''})`)
-    const label = markdownToken?.label ?? (labelRaw ?? '').trim()
-    const target = markdownToken?.target ?? (targetRaw ?? '').trim()
+    const markdownToken = readMarkdownInlineTokenAt(text, start)
+    if (!markdownToken || markdownToken.isImage) {
+      searchFrom = start + 1
+      continue
+    }
 
+    if (markdownToken.start > cursor) {
+      segments.push(...splitPlainTextByLinks(text.slice(cursor, markdownToken.start)))
+    }
+
+    const label = markdownToken.label
+    const target = markdownToken.target
     if (/^https?:\/\//u.test(target)) {
       segments.push({ kind: 'url', value: label || target, href: target })
     } else {
@@ -2306,11 +2374,12 @@ function splitTextByFileUrls(text: string): InlineSegment[] {
           downloadName: getBasename(ref.path),
         })
       } else {
-        segments.push({ kind: 'text', value: fullMatch })
+        segments.push({ kind: 'text', value: text.slice(markdownToken.start, markdownToken.end) })
       }
     }
 
-    cursor = end
+    cursor = markdownToken.end
+    searchFrom = markdownToken.end
   }
 
   if (cursor < text.length) {
@@ -2996,24 +3065,37 @@ function parseNonCodeMessageBlocks(text: string): MessageBlock[] {
   }
 
   const blocks: MessageBlock[] = []
-  const imagePattern = /!\[([^\]]*)\]\(([^)\n]+)\)/gu
   let cursor = 0
+  let searchFrom = 0
 
-  for (const match of text.matchAll(imagePattern)) {
-    const [fullMatch, altRaw, urlRaw] = match
-    if (typeof match.index !== 'number') continue
+  while (searchFrom < text.length) {
+    const start = text.indexOf('![', searchFrom)
+    if (start < 0) break
 
-    const start = match.index
-    const end = start + fullMatch.length
-    const imageUrl = toRenderableImageUrl(urlRaw.trim())
-    if (!imageUrl) continue
-
-    if (start > cursor) {
-      blocks.push(...parseTextBlocks(text.slice(cursor, start)))
+    const markdownToken = readMarkdownInlineTokenAt(text, start)
+    if (!markdownToken || !markdownToken.isImage) {
+      searchFrom = start + 2
+      continue
     }
 
-    blocks.push({ kind: 'image', url: imageUrl, alt: altRaw.trim(), markdown: fullMatch })
-    cursor = end
+    const imageUrl = toRenderableImageUrl(markdownToken.target)
+    if (!imageUrl) {
+      searchFrom = markdownToken.end
+      continue
+    }
+
+    if (markdownToken.start > cursor) {
+      blocks.push(...parseTextBlocks(text.slice(cursor, markdownToken.start)))
+    }
+
+    blocks.push({
+      kind: 'image',
+      url: imageUrl,
+      alt: markdownToken.label.trim(),
+      markdown: text.slice(markdownToken.start, markdownToken.end),
+    })
+    cursor = markdownToken.end
+    searchFrom = markdownToken.end
   }
 
   if (cursor < text.length) {
