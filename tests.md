@@ -700,3 +700,23 @@ This file tracks manual regression and feature verification steps.
 - Turn off any network blocking, proxy rule, or backend breakpoint used to simulate the failure.
 - Remove any temporary attachments from the composer before continuing other tests.
 - Stop the app server when finished.
+
+### Feature: Home no-thread composer alignment
+
+#### Prerequisites
+- App server is running from this repository.
+- At least one workspace/project is available so the home screen renders normally.
+
+#### Steps
+1. Open the app to the home/new-thread screen (no thread selected).
+2. Inspect the horizontal alignment of the message composer input relative to the home content above it (`Let's build`, folder selector, runtime section).
+3. Resize the window between narrow and wide desktop widths.
+4. Start a new thread and then navigate back to the home/new-thread screen.
+
+#### Expected Results
+- On the home/no-thread screen, the composer container is centered and aligned with the main content column.
+- The composer input no longer appears horizontally offset compared with the content above.
+- Alignment remains stable across desktop width changes and after returning from a thread.
+
+#### Rollback/Cleanup
+- None.

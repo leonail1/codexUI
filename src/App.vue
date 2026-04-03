@@ -423,6 +423,7 @@
                 </div>
               </div>
 
+              <div class="composer-with-queue composer-with-queue-home">
                 <ThreadComposer ref="homeThreadComposerRef" :active-thread-id="composerThreadContextId"
                   :cwd="composerCwd"
                   :collaboration-modes="availableCollaborationModes"
@@ -443,6 +444,7 @@
                   @update:selected-model="onSelectModel"
                   @update:selected-reasoning-effort="onSelectReasoningEffort"
                   @update:selected-speed-mode="onSelectSpeedMode" />
+              </div>
             </div>
           </template>
           <template v-else>
@@ -2665,6 +2667,10 @@ async function submitFirstMessageForNewThread(
 
 .composer-with-queue {
   @apply w-full shrink-0 px-2 sm:px-6;
+}
+
+.composer-with-queue-home {
+  @apply mx-auto max-w-4xl;
 }
 
 .content-header-review-button {
