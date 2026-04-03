@@ -1,8 +1,9 @@
 import { fileURLToPath } from 'node:url'
 import { dirname, extname, isAbsolute, join } from 'node:path'
 import type { Server as HttpServer, IncomingMessage } from 'node:http'
-import { existsSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, statSync, renameSync } from 'node:fs'
 import { writeFile, stat } from 'node:fs/promises'
+import { homedir } from 'node:os'
 import express, { type Express } from 'express'
 import { createCodexBridgeMiddleware } from './codexAppServerBridge.js'
 import { createAuthSession } from './authMiddleware.js'
@@ -68,10 +69,103 @@ function readWildcardPathParam(value: unknown): string {
   return ''
 }
 
+const API_LOG_DIR = join(homedir(), '.codex', 'logs')
+const API_LOG_FILE = join(API_LOG_DIR, 'api-requests.log')
+const API_LOG_MAX_BYTES = 10 * 1024 * 1024
+const API_LOG_BODY_MAX_CHARS = 8000
+
+function isApiLoggingEnabled(): boolean {
+  const val = (process.env.API_REQUEST_LOG ?? '1').trim().toLowerCase()
+  return val !== '0' && val !== 'false' && val !== 'off' && val !== 'no'
+}
+
+function ensureLogDir(): void {
+  try {
+    if (!existsSync(API_LOG_DIR)) {
+      mkdirSync(API_LOG_DIR, { recursive: true })
+    }
+  } catch { /* best effort */ }
+}
+
+function rotateLogIfNeeded(): void {
+  try {
+    const info = statSync(API_LOG_FILE)
+    if (info.size > API_LOG_MAX_BYTES) {
+      const prevBackup = `${API_LOG_FILE}.2`
+      const curBackup = `${API_LOG_FILE}.1`
+      try { renameSync(curBackup, prevBackup) } catch { /* ok if missing */ }
+      renameSync(API_LOG_FILE, curBackup)
+    }
+  } catch { /* file may not exist yet */ }
+}
+
+function truncateBody(body: unknown): string {
+  if (body === null || body === undefined) return ''
+  try {
+    const json = JSON.stringify(body)
+    if (json.length <= API_LOG_BODY_MAX_CHARS) return json
+    return `${json.slice(0, API_LOG_BODY_MAX_CHARS)}…[truncated ${json.length} chars]`
+  } catch {
+    return '[unserializable]'
+  }
+}
+
+function logApiRequest(
+  method: string,
+  url: string,
+  status: number,
+  durationMs: number,
+  extra?: string,
+  body?: unknown,
+): void {
+  try {
+    const ts = new Date().toISOString()
+    let line = `${ts} ${method} ${url} ${status} ${durationMs}ms`
+    if (extra) line += ` ${extra}`
+    if (body !== undefined && body !== null) {
+      line += `\n  body: ${truncateBody(body)}`
+    }
+    appendFileSync(API_LOG_FILE, `${line}\n`)
+  } catch { /* never break request flow */ }
+}
+
+ensureLogDir()
+
 export function createServer(options: ServerOptions = {}): ServerInstance {
   const app = express()
   const bridge = createCodexBridgeMiddleware()
   const authSession = options.password ? createAuthSession(options.password) : null
+
+  // 0. API request logging middleware
+  if (isApiLoggingEnabled()) {
+    console.log(`[api-log] Logging API requests to ${API_LOG_FILE}`)
+    app.use((req, res, next) => {
+      const start = Date.now()
+      const origEnd = res.end
+      const method = req.method || 'UNKNOWN'
+      const url = req.url || '/'
+      res.end = function (...args: Parameters<typeof origEnd>) {
+        const duration = Date.now() - start
+        if (url.startsWith('/codex-api/')) {
+          rotateLogIfNeeded()
+          const reqRecord = req as unknown as Record<string, unknown>
+          const rpcMethod = reqRecord.__rpcMethod as string | undefined
+          const parsedBody = reqRecord.__parsedBody as unknown
+          const queryParams = url.includes('?') ? url.slice(url.indexOf('?')) : undefined
+          logApiRequest(
+            method,
+            url,
+            res.statusCode,
+            duration,
+            rpcMethod ? `rpc=${rpcMethod}` : queryParams ? `query=${queryParams}` : undefined,
+            parsedBody,
+          )
+        }
+        return origEnd.apply(res, args)
+      } as typeof origEnd
+      next()
+    })
+  }
 
   // 1. Auth middleware (if password is set)
   if (authSession) {

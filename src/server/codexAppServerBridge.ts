@@ -994,7 +994,9 @@ async function readJsonBody(req: IncomingMessage): Promise<unknown> {
   if (raw.length === 0) return null
   const text = raw.toString('utf8').trim()
   if (text.length === 0) return null
-  return JSON.parse(text) as unknown
+  const parsed = JSON.parse(text) as unknown
+  ;(req as unknown as Record<string, unknown>).__parsedBody = parsed
+  return parsed
 }
 
 async function readRawBody(req: IncomingMessage): Promise<Buffer> {
@@ -1762,6 +1764,7 @@ export function createCodexBridgeMiddleware(): CodexBridgeMiddleware {
           return
         }
 
+        ;(req as unknown as Record<string, unknown>).__rpcMethod = body.method
         const rpcResult = await appServer.rpc(body.method, body.params ?? null)
         const result = trimThreadTurnsInRpcResult(body.method, rpcResult)
         setJson(res, 200, { result })
