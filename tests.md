@@ -735,6 +735,7 @@ This file tracks manual regression and feature verification steps.
 
 #### Expected Results
 - On the home/no-thread screen, the composer container is centered and aligned with the main content column.
+- The composer is anchored at the bottom of the home content area (not floating mid-page).
 - The composer input no longer appears horizontally offset compared with the content above.
 - The composer and input are fully visible on-screen (no horizontal clipping at either edge).
 - Alignment remains stable across desktop width changes and after returning from a thread.

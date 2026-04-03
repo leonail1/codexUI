@@ -2670,7 +2670,7 @@ async function submitFirstMessageForNewThread(
 }
 
 .composer-with-queue-home {
-  @apply w-full shrink-0 mx-auto max-w-3xl;
+  @apply w-full shrink-0 mx-auto max-w-3xl mt-auto pb-2 sm:pb-4;
 }
 
 .content-header-review-button {
