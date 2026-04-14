@@ -2935,7 +2935,12 @@ export function createCodexBridgeMiddleware(): CodexBridgeMiddleware {
                 return
               }
 
-              const state: FreeModeState = { enabled: true, apiKey, model: FREE_MODE_DEFAULT_MODEL, provider: 'openrouter' }
+              const prev = readFreeModeState()
+              const prevKeys = prev.providerKeys ?? {}
+              if (prev.provider && prev.apiKey) {
+                prevKeys[prev.provider] = prev.apiKey
+              }
+              const state: FreeModeState = { enabled: true, apiKey, model: FREE_MODE_DEFAULT_MODEL, provider: 'openrouter', providerKeys: prevKeys }
               await writeFile(statePath, JSON.stringify(state), 'utf8')
               appServer.dispose()
               const freeModels = await getFreeModels()
@@ -2947,7 +2952,12 @@ export function createCodexBridgeMiddleware(): CodexBridgeMiddleware {
                 models: freeModels,
               })
             } else {
-              const state: FreeModeState = { enabled: false, apiKey: null, model: FREE_MODE_DEFAULT_MODEL }
+              const prev = readFreeModeState()
+              const prevKeys = prev.providerKeys ?? {}
+              if (prev.provider && prev.apiKey) {
+                prevKeys[prev.provider] = prev.apiKey
+              }
+              const state: FreeModeState = { enabled: false, apiKey: null, model: FREE_MODE_DEFAULT_MODEL, providerKeys: prevKeys }
               await writeFile(statePath, JSON.stringify(state), 'utf8')
               appServer.dispose()
               setJson(res, 200, { ok: true, enabled: false })
@@ -3035,14 +3045,24 @@ export function createCodexBridgeMiddleware(): CodexBridgeMiddleware {
               setJson(res, 400, { error: 'baseUrl is required' })
               return
             }
+            const current = readFreeModeState()
+            const prevKeys = current.providerKeys ?? {}
+            if (current.provider && current.apiKey) {
+              prevKeys[current.provider] = current.apiKey
+            }
+            const resolvedKey = apiKey || prevKeys[providerType] || ''
+            if (resolvedKey) {
+              prevKeys[providerType] = resolvedKey
+            }
             const state: FreeModeState = {
               enabled: true,
-              apiKey: apiKey || 'dummy',
+              apiKey: resolvedKey,
               model: '',
               customKey: true,
               provider: providerType,
               customBaseUrl: providerType === 'custom' ? baseUrl : undefined,
               wireApi,
+              providerKeys: prevKeys,
             }
             await writeFile(statePath, JSON.stringify(state), 'utf8')
             appServer.dispose()
