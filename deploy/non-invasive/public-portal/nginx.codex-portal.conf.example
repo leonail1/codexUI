@@ -1,0 +1,108 @@
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    '' close;
+}
+
+map $cookie_codex_target $codex_upstream_port {
+    default 22339;
+    a100 22340;
+    v100 22339;
+    node6 22341;
+}
+
+map $cookie_codex_target $codex_target_label {
+    default v100;
+    a100 a100;
+    v100 v100;
+    node6 node6;
+}
+
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    server_name _;
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+        try_files $uri =404;
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl http2 default_server;
+    listen [::]:443 ssl http2 default_server;
+    server_name _;
+
+    ssl_certificate /etc/letsencrypt/live/example/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/example/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_session_timeout 1d;
+    ssl_session_cache shared:SSL:10m;
+    ssl_prefer_server_ciphers off;
+
+    location = /servers {
+        alias /var/www/codex-selector/index.html;
+        default_type text/html;
+        add_header Cache-Control "no-store";
+    }
+
+    location = /select/a100 {
+        add_header Set-Cookie "codex_target=a100; Path=/; SameSite=Lax" always;
+        return 302 /;
+    }
+
+    location = /select/v100 {
+        add_header Set-Cookie "codex_target=v100; Path=/; SameSite=Lax" always;
+        return 302 /;
+    }
+
+    location = /select/node6 {
+        add_header Set-Cookie "codex_target=node6; Path=/; SameSite=Lax" always;
+        return 302 /;
+    }
+
+    location /auth/ {
+        proxy_pass http://127.0.0.1:18081/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Original-URI $request_uri;
+    }
+
+    location = /_auth_internal_check {
+        internal;
+        proxy_pass http://127.0.0.1:18081/check;
+        proxy_pass_request_body off;
+        proxy_set_header Content-Length "";
+        proxy_set_header Host $host;
+        proxy_set_header Cookie $http_cookie;
+        proxy_set_header X-Original-URI $request_uri;
+    }
+
+    location / {
+        auth_request /_auth_internal_check;
+        error_page 401 = @login_redirect;
+
+        proxy_pass http://127.0.0.1:$codex_upstream_port;
+        add_header X-Codex-Target $codex_target_label always;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_read_timeout 3600;
+        proxy_send_timeout 3600;
+    }
+
+    location @login_redirect {
+        return 302 /auth/login;
+    }
+}

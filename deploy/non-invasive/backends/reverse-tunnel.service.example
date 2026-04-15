@@ -1,0 +1,18 @@
+[Unit]
+Description=Reverse tunnel for codexUI
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/ssh -NT \
+  -o ExitOnForwardFailure=yes \
+  -o ServerAliveInterval=30 \
+  -o ServerAliveCountMax=3 \
+  -R 22340:127.0.0.1:3100 \
+  xyx@106.55.9.238
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

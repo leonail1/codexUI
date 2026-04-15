@@ -1,0 +1,17 @@
+[Unit]
+Description=Codex Global Auth Service
+After=network.target
+
+[Service]
+Type=simple
+User=xyx
+Group=xyx
+WorkingDirectory=/home/xyx/codex-portal
+EnvironmentFile=/etc/codex-global-auth.env
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 /home/xyx/codex-portal/auth_server.py --bind 127.0.0.1 --port 18081
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

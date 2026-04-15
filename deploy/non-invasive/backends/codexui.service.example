@@ -1,0 +1,17 @@
+[Unit]
+Description=CodexUI Web Server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/codexUI
+Environment=NODE_ENV=production
+Environment=CODEX_HOME=%h/.codex
+Environment=PATH=%h/.npm-global/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/usr/bin/env node %h/codexUI/dist-cli/index.js --port 3100 --no-password --no-tunnel --no-open --no-login --sandbox-mode danger-full-access --approval-policy never
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target
