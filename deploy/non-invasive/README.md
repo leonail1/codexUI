@@ -16,6 +16,7 @@ With this setup you get:
 - server switching without re-entering password
 - one active web login globally
 - old pages becoming invalid on their next request
+- stable per-machine HTTPS origins so different machines can stay open in different tabs
 
 What you do **not** get without changing `codexUI` itself:
 
@@ -48,12 +49,18 @@ What you do **not** get without changing `codexUI` itself:
    - `A100 -> 22340`
    - `v100 -> 22339`
    - `node6 -> 22341`
-3. The public server routes by the `codex_target` cookie.
-4. nginx checks the shared auth cookie through `auth_request`.
-5. Logging in somewhere else rotates the single valid session token.
-6. The old page keeps rendering until it makes another HTTP request, then it is rejected.
+3. The public server exposes fixed HTTPS endpoints:
+   - `https://106.55.9.238/` as the login + selector portal
+   - `https://106.55.9.238:24431/` for `A100`
+   - `https://106.55.9.238:24432/` for `v100`
+   - `https://106.55.9.238:24433/` for `node6`
+4. nginx routes by the requested listener port, not by a shared target cookie.
+5. nginx checks the shared auth cookie through `auth_request`.
+6. Logging in somewhere else rotates the single valid session token.
+7. The old page keeps rendering until it makes another HTTP request, then it is rejected.
 
 The public layer also serves its own no-op `/sw.js` so upstream `codexUI` does not install an app-shell cache on the shared public origin.
+Because all endpoints share the same host and differ only by port, one host-only auth cookie is automatically reused across the portal and backend ports.
 
 ## Backend host setup
 

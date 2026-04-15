@@ -14,6 +14,7 @@ from urllib.parse import parse_qs, urlparse
 
 
 COOKIE_NAME = os.environ.get("CODEX_GLOBAL_AUTH_COOKIE_NAME", "codex_global_session")
+COOKIE_DOMAIN = os.environ.get("CODEX_GLOBAL_AUTH_COOKIE_DOMAIN", "").strip()
 PASSWORD = os.environ.get("CODEX_GLOBAL_AUTH_PASSWORD", "")
 STATE_DIR = Path(os.environ.get("CODEX_GLOBAL_AUTH_STATE_DIR", str(Path.home() / ".codex-global-auth")))
 STATE_FILE = STATE_DIR / "session.json"
@@ -63,7 +64,19 @@ def sanitize_next(raw_value: str | None) -> str:
     return candidate
 
 
-def current_target_label(raw_cookie: str | None) -> str:
+def current_target_label(raw_cookie: str | None, host_header: str | None = None) -> str:
+    forwarded_label = os.environ.get("CODEX_GLOBAL_AUTH_TARGET_LABEL_HEADER", "X-Codex-Target-Label")
+    # The nginx layer may inject a target label directly, which is useful for same-host multi-port routing.
+    # Access to request headers is only available inside the request handler, so host-only fallback continues below.
+    host = (host_header or "").split(":", 1)[0].strip().lower()
+    if host.startswith("a100."):
+        return "A100"
+    if host.startswith("node6."):
+        return "node6"
+    if host.startswith("v100."):
+        return "v100"
+    if host.startswith("portal."):
+        return "Portal"
     target = read_cookie(raw_cookie, "codex_target").strip().lower()
     if target == "a100":
         return "A100"
@@ -92,12 +105,14 @@ def is_authenticated(raw_cookie: str | None) -> bool:
 
 
 def expired_cookie_header() -> str:
-    return f"{COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age=0"
+    domain = f"; Domain={COOKIE_DOMAIN}" if COOKIE_DOMAIN else ""
+    return f"{COOKIE_NAME}=; Path=/{domain}; HttpOnly; SameSite=Lax; Secure; Max-Age=0"
 
 
 def session_cookie_header(token: str) -> str:
+    domain = f"; Domain={COOKIE_DOMAIN}" if COOKIE_DOMAIN else ""
     return (
-        f"{COOKIE_NAME}={token}; Path=/; HttpOnly; SameSite=Lax; Secure; "
+        f"{COOKIE_NAME}={token}; Path=/{domain}; HttpOnly; SameSite=Lax; Secure; "
         f"Max-Age={SESSION_MAX_AGE_SECONDS}"
     )
 
@@ -274,7 +289,11 @@ class AuthHandler(BaseHTTPRequestHandler):
         if is_authenticated(self.headers.get("Cookie")):
             self.respond_redirect(next_path, head_only=head_only)
             return
-        body = render_login_page(next_path, current_target_label(self.headers.get("Cookie")))
+        label = self.headers.get("X-Codex-Target-Label") or current_target_label(
+            self.headers.get("Cookie"),
+            self.headers.get("Host"),
+        )
+        body = render_login_page(next_path, label)
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Cache-Control", "no-store")
@@ -288,9 +307,13 @@ class AuthHandler(BaseHTTPRequestHandler):
         form = parse_qs(payload, keep_blank_values=True)
         password = form.get("password", [""])[0]
         next_path = sanitize_next(form.get("next", ["/"])[0])
+        label = self.headers.get("X-Codex-Target-Label") or current_target_label(
+            self.headers.get("Cookie"),
+            self.headers.get("Host"),
+        )
 
         if not PASSWORD or not secrets.compare_digest(password, PASSWORD):
-            body = render_login_page(next_path, current_target_label(self.headers.get("Cookie")), "Incorrect password.")
+            body = render_login_page(next_path, label, "Incorrect password.")
             self.send_response(HTTPStatus.UNAUTHORIZED)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("Cache-Control", "no-store")
