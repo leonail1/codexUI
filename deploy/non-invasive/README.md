@@ -28,6 +28,8 @@ What you do **not** get without changing `codexUI` itself:
   Single-session auth service. No external Python deps.
 - `public-portal/index.html`
   Static server selector page.
+- `public-portal/sw.js`
+  No-op service worker that prevents upstream app-shell caching from interfering with outer auth.
 - `public-portal/nginx.codex-portal.conf.example`
   nginx config template for the public server.
 - `public-portal/codex-global-auth.service.example`
@@ -50,6 +52,8 @@ What you do **not** get without changing `codexUI` itself:
 4. nginx checks the shared auth cookie through `auth_request`.
 5. Logging in somewhere else rotates the single valid session token.
 6. The old page keeps rendering until it makes another HTTP request, then it is rejected.
+
+The public layer also serves its own no-op `/sw.js` so upstream `codexUI` does not install an app-shell cache on the shared public origin.
 
 ## Backend host setup
 
